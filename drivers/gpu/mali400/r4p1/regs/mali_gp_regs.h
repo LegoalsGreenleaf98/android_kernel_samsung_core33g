@@ -115,6 +115,7 @@ typedef enum {
 /* Mask defining the IRQs in Mali GP which we use */
 #define MALIGP2_REG_VAL_IRQ_MASK_USED \
 	(\
+	 MALIGP2_REG_VAL_IRQ_VS_END_CMD_LST      | \
 	 MALIGP2_REG_VAL_IRQ_PLBU_END_CMD_LST    | \
 	 MALIGP2_REG_VAL_IRQ_PLBU_OUT_OF_MEM     | \
 	 MALIGP2_REG_VAL_IRQ_FORCE_HANG          | \

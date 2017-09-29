@@ -81,14 +81,11 @@ typedef enum {
 	_MALI_UK_TIMELINE_CREATE_SYNC_FENCE,  /**< _mali_ukk_timeline_create_sync_fence() */
 	_MALI_UK_SOFT_JOB_START,              /**< _mali_ukk_soft_job_start() */
 	_MALI_UK_SOFT_JOB_SIGNAL,             /**< _mali_ukk_soft_job_signal() */
-	_MALI_UK_SET_GPU_LEVEL,           /*set gpu level to control frequency */
 
 	/** Memory functions */
 
 	_MALI_UK_INIT_MEM                = 0,    /**< _mali_ukk_init_mem() */
 	_MALI_UK_TERM_MEM,                       /**< _mali_ukk_term_mem() */
-	_MALI_UK_GET_BIG_BLOCK,                  /**< _mali_ukk_get_big_block() */
-	_MALI_UK_FREE_BIG_BLOCK,                 /**< _mali_ukk_free_big_block() */
 	_MALI_UK_MAP_MEM,                        /**< _mali_ukk_mem_mmap() */
 	_MALI_UK_UNMAP_MEM,                      /**< _mali_ukk_mem_munmap() */
 	_MALI_UK_QUERY_MMU_PAGE_TABLE_DUMP_SIZE, /**< _mali_ukk_mem_get_mmu_page_table_dump_size() */

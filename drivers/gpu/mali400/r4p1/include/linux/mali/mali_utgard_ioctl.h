@@ -50,7 +50,6 @@ extern "C" {
 #define MALI_IOC_TIMELINE_CREATE_SYNC_FENCE _IOWR(MALI_IOC_CORE_BASE, _MALI_UK_TIMELINE_CREATE_SYNC_FENCE, _mali_uk_timeline_create_sync_fence_s)
 #define MALI_IOC_SOFT_JOB_START             _IOWR(MALI_IOC_CORE_BASE, _MALI_UK_SOFT_JOB_START, _mali_uk_soft_job_start_s)
 #define MALI_IOC_SOFT_JOB_SIGNAL            _IOWR(MALI_IOC_CORE_BASE, _MALI_UK_SOFT_JOB_SIGNAL, _mali_uk_soft_job_signal_s)
-#define MALI_IOC_SET_GPU_LEVEL              _IOWR(MALI_IOC_CORE_BASE, _MALI_UK_SET_GPU_LEVEL, int)
 
 #define MALI_IOC_MEM_MAP_EXT                _IOWR(MALI_IOC_MEMORY_BASE, _MALI_UK_MAP_EXT_MEM, _mali_uk_map_external_mem_s)
 #define MALI_IOC_MEM_UNMAP_EXT              _IOW (MALI_IOC_MEMORY_BASE, _MALI_UK_UNMAP_EXT_MEM, _mali_uk_unmap_external_mem_s)
@@ -81,8 +80,6 @@ extern "C" {
 #define MALI_IOC_VSYNC_EVENT_REPORT         _IOW (MALI_IOC_VSYNC_BASE, _MALI_UK_VSYNC_EVENT_REPORT, _mali_uk_vsync_event_report_s)
 
 /* Deprecated ioctls */
-#define MALI_IOC_MEM_GET_BIG_BLOCK          _IOWR(MALI_IOC_MEMORY_BASE, _MALI_UK_GET_BIG_BLOCK, void *)
-#define MALI_IOC_MEM_FREE_BIG_BLOCK         _IOW (MALI_IOC_MEMORY_BASE, _MALI_UK_FREE_BIG_BLOCK, void *)
 #define MALI_IOC_MEM_INIT                   _IOR (MALI_IOC_MEMORY_BASE, _MALI_UK_INIT_MEM, _mali_uk_init_mem_s)
 #define MALI_IOC_MEM_TERM                   _IOW (MALI_IOC_MEMORY_BASE, _MALI_UK_TERM_MEM, _mali_uk_term_mem_s)
 

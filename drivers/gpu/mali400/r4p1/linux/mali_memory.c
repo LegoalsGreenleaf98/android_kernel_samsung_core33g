@@ -17,18 +17,20 @@
 #include <linux/version.h>
 #include <linux/platform_device.h>
 
-
 #include "mali_osk.h"
 #include "mali_osk_mali.h"
 #include "mali_kernel_linux.h"
 #include "mali_scheduler.h"
+#include "mali_executor.h"
 #include "mali_kernel_descriptor_mapping.h"
-#include "mali_osk_bitops.h"
 
 #include "mali_memory.h"
 #include "mali_memory_dma_buf.h"
 #include "mali_memory_os_alloc.h"
 #include "mali_memory_block_alloc.h"
+
+extern unsigned int mali_dedicated_mem_size;
+extern unsigned int mali_shared_mem_size;
 
 /* session->memory_lock must be held when calling this function */
 static void mali_mem_release(mali_mem_allocation *descriptor)
@@ -57,6 +59,9 @@ static void mali_mem_release(mali_mem_allocation *descriptor)
 		break;
 	case MALI_MEM_BLOCK:
 		mali_mem_block_release(descriptor);
+		break;
+	default:
+		MALI_DEBUG_PRINT(1, ("mem type %d is not in the mali_mem_type enum.\n", descriptor->type));
 		break;
 	}
 }
@@ -168,6 +173,15 @@ int mali_mmap(struct file *filp, struct vm_area_struct *vma)
 	vma->vm_flags |= VM_DONTEXPAND;
 #endif
 
+	/* For CTS5.1_r0.5 security case
+	 * force read mapping fail if meet KBASE_REG_COOKIE_MTP or KBASE_REG_COOKIE_TB
+	 */
+#define KBASE_REG_COOKIE_MTP 1
+#define KBASE_REG_COOKIE_TB 2
+	if ((vma->vm_pgoff == KBASE_REG_COOKIE_MTP) || (vma->vm_pgoff == KBASE_REG_COOKIE_TB)) {
+		vma->vm_flags &= ~(VM_READ | VM_MAYREAD);
+	}
+
 	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 	vma->vm_ops = &mali_kernel_vm_ops; /* Operations used on any memory system */
 
@@ -187,7 +201,11 @@ int mali_mmap(struct file *filp, struct vm_area_struct *vma)
 	/* Put on descriptor map */
 	if (_MALI_OSK_ERR_OK != mali_descriptor_mapping_allocate_mapping(session->descriptor_mapping, descriptor, &descriptor->id)) {
 		_mali_osk_mutex_wait(session->memory_lock);
-		mali_mem_os_release(descriptor);
+		if (MALI_MEM_OS == descriptor->type) {
+			mali_mem_os_release(descriptor);
+		} else if (MALI_MEM_BLOCK == descriptor->type) {
+			mali_mem_block_release(descriptor);
+		}
 		_mali_osk_mutex_signal(session->memory_lock);
 		return -EFAULT;
 	}
@@ -240,9 +258,6 @@ _mali_osk_errcode_t mali_mem_mali_map_prepare(mali_mem_allocation *descriptor)
 	return mali_mmu_pagedir_map(session->page_directory, descriptor->mali_mapping.addr, size);
 }
 
-extern void mali_pause_lock(void);
-extern void mali_pause_unlock(void);
-
 void mali_mem_mali_map_free(mali_mem_allocation *descriptor)
 {
 	u32 size = descriptor->size;
@@ -254,14 +269,10 @@ void mali_mem_mali_map_free(mali_mem_allocation *descriptor)
 		size += MALI_MMU_PAGE_SIZE;
 	}
 
-	mali_pause_lock();
-
 	/* Umap and flush L2 */
 	mali_mmu_pagedir_unmap(session->page_directory, descriptor->mali_mapping.addr, descriptor->size);
 
-	mali_scheduler_zap_all_active(session);
-
-	mali_pause_unlock();
+	mali_executor_zap_all_active(session);
 }
 
 u32 _mali_ukk_report_memory_usage(void)
@@ -273,6 +284,12 @@ u32 _mali_ukk_report_memory_usage(void)
 
 	return sum;
 }
+
+u32 _mali_ukk_report_total_memory_size(void)
+{
+	return mali_dedicated_mem_size + mali_shared_mem_size;
+}
+
 
 /**
  * Per-session memory descriptor mapping table sizes
@@ -299,8 +316,6 @@ _mali_osk_errcode_t mali_memory_session_begin(struct mali_session_data *session_
 		_mali_osk_free(session_data);
 		MALI_ERROR(_MALI_OSK_ERR_FAULT);
 	}
-
-	session_data->pid = _mali_osk_get_pid();
 
 	MALI_DEBUG_PRINT(5, ("MMU session begin: success\n"));
 	MALI_SUCCESS;
@@ -383,45 +398,3 @@ _mali_osk_errcode_t _mali_ukk_term_mem( _mali_uk_term_mem_s *args )
 	MALI_DEBUG_ASSERT(NULL != (void *)(uintptr_t)args->ctx);
 	MALI_SUCCESS;
 }
-
-u32 _mali_kernel_memory_dump_state(char* buf, u32 size)
-{
-	int n = 0;
-
-	struct mali_session_data *session, *tmp;
-
-	mali_session_lock();
-	MALI_SESSION_FOREACH(session, tmp, link)
-	{
-		int i;
-		u32 sum_gl = 0;
-
-		_mali_osk_mutex_wait(session->memory_lock);
-
-		_mali_osk_mutex_rw_wait(session->descriptor_mapping->lock, _MALI_OSK_LOCKMODE_RO);
-		/* id 0 is skipped as it's an reserved ID not mapping to anything */
-		for (i = 1; i < session->descriptor_mapping->current_nr_mappings; ++i) {
-			if (_mali_osk_test_bit(i, session->descriptor_mapping->table->usage)) {
-				mali_mem_allocation* descriptor = (mali_mem_allocation*)session->descriptor_mapping->table->mappings[i];
-				switch(descriptor->type)
-				{
-				case MALI_MEM_OS:
-					sum_gl += descriptor->size;
-//					n += _mali_osk_snprintf(buf + n, size - n, "\t%-8s\t0x%08x\n", "GL", descriptor->size);
-					break;
-				default:
-					;
-				}
-			}
-		}
-		_mali_osk_mutex_rw_signal(session->descriptor_mapping->lock, _MALI_OSK_LOCKMODE_RO);
-
-		_mali_osk_mutex_signal(session->memory_lock);
-
-		n += _mali_osk_snprintf(buf + n, size - n, "%8d\t0x%08x\n", session->pid, sum_gl);
-	}
-	mali_session_unlock();
-
-	return n;
-}
-

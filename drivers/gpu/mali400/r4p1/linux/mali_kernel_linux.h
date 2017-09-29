@@ -20,16 +20,6 @@ extern "C" {
 #include "mali_osk_types.h"
 
 extern struct platform_device *mali_platform_device;
-#include <linux/mali/mali_utgard.h>
-
-#ifdef CONFIG_OF
-
-#include <linux/of.h>
-extern const struct of_device_id gpu_ids[];
-#endif
-void mali_platform_utilization(struct mali_gpu_utilization_data *data);
-void mali_platform_device_release(struct device *device);
-int mali_power_initialize(struct platform_device *pdev);
 
 #ifdef __cplusplus
 }

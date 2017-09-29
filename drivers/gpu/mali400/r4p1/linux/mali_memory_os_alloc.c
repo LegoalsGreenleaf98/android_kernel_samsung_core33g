@@ -151,7 +151,12 @@ static int mali_mem_os_alloc_pages(mali_mem_allocation *descriptor, u32 size)
 #if defined(CONFIG_ARM) && !defined(CONFIG_ARM_LPAE)
 		flags |= GFP_HIGHUSER;
 #else
+	/* After 3.15.0 kernel use ZONE_DMA replace ZONE_DMA32 */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 15, 0)
 		flags |= GFP_DMA32;
+#else
+		flags |= GFP_DMA;
+#endif
 #endif
 
 		new_page = alloc_page(flags);
@@ -161,6 +166,7 @@ static int mali_mem_os_alloc_pages(mali_mem_allocation *descriptor, u32 size)
 			descriptor->os_mem.count = (page_count - remaining) + i;
 			atomic_add(descriptor->os_mem.count, &mali_mem_os_allocator.allocated_pages);
 			mali_mem_os_free(descriptor);
+			MALI_DEBUG_PRINT(2,("function = %s, line = %d, alloc_page failed \n",__FUNCTION__, __LINE__));
 			return -ENOMEM;
 		}
 
@@ -176,6 +182,7 @@ static int mali_mem_os_alloc_pages(mali_mem_allocation *descriptor, u32 size)
 			descriptor->os_mem.count = (page_count - remaining) + i;
 			atomic_add(descriptor->os_mem.count, &mali_mem_os_allocator.allocated_pages);
 			mali_mem_os_free(descriptor);
+			MALI_DEBUG_PRINT(2,("function = %s, line = %d, dma_mapping_error failed \n",__FUNCTION__, __LINE__));
 			return -EFAULT;
 		}
 
@@ -208,6 +215,7 @@ static int mali_mem_os_mali_map(mali_mem_allocation *descriptor, struct mali_ses
 
 	err = mali_mem_mali_map_prepare(descriptor);
 	if (_MALI_OSK_ERR_OK != err) {
+		MALI_DEBUG_PRINT(2,("function = %s, line =%d, mali_mem_mali_map_prepare failed(%d)\n",__FUNCTION__, __LINE__, err));
 		return -ENOMEM;
 	}
 
@@ -269,20 +277,15 @@ mali_mem_allocation *mali_mem_os_alloc(u32 mali_addr, u32 size, struct vm_area_s
 	}
 
 	descriptor = mali_mem_descriptor_create(session, MALI_MEM_OS);
-	if (NULL == descriptor) return NULL;
-
+	if (NULL == descriptor) {
+		MALI_DEBUG_PRINT(2,("function = %s, line = %d, mali_mem_descriptor_create failed \n",__FUNCTION__, __LINE__));
+		return NULL;
+	}
 	descriptor->mali_mapping.addr = mali_addr;
 	descriptor->size = size;
 	descriptor->cpu_mapping.addr = (void __user *)vma->vm_start;
 	descriptor->cpu_mapping.ref = 1;
 
- // Porting the solutions about the CTS security case
-	if (vma->vm_pgoff == KBASE_REG_COOKIE_TB) {
-		/* map read only, noexec */
-		vma->vm_flags &= ~(VM_WRITE | VM_MAYWRITE | VM_EXEC | VM_MAYEXEC);
-		/* the rest of the flags is added by the cpu_mmap handler */
-	}
-	
 	if (VM_SHARED == (VM_SHARED & vma->vm_flags)) {
 		descriptor->mali_mapping.properties = MALI_MMU_FLAGS_DEFAULT;
 	} else {
@@ -300,18 +303,19 @@ mali_mem_allocation *mali_mem_os_alloc(u32 mali_addr, u32 size, struct vm_area_s
 	err = mali_mem_os_mali_map(descriptor, session); /* Map on Mali */
 	if (0 != err) goto mali_map_failed;
 
-	_mali_osk_mutex_signal(session->memory_lock);
-
 	err = mali_mem_os_cpu_map(descriptor, vma); /* Map on CPU */
 	if (0 != err) goto cpu_map_failed;
 
+	_mali_osk_mutex_signal(session->memory_lock);
 	return descriptor;
 
 cpu_map_failed:
 	mali_mem_os_mali_unmap(session, descriptor);
+	MALI_DEBUG_PRINT(2,("OS allocator: cpu_map_faliled (%d)\n", err));
 mali_map_failed:
 	_mali_osk_mutex_signal(session->memory_lock);
 	mali_mem_os_free(descriptor);
+	MALI_DEBUG_PRINT(2,("OS allocator: mali_map_faliled (%d)\n", err));
 alloc_failed:
 	mali_mem_descriptor_destroy(descriptor);
 	MALI_DEBUG_PRINT(2, ("OS allocator: Failed to allocate memory (%d)\n", err));
@@ -343,6 +347,8 @@ static struct {
 	.lock = __SPIN_LOCK_UNLOCKED(pool_lock),
 };
 
+size_t mali_mem_page_table_page_count = 0;
+
 _mali_osk_errcode_t mali_mem_os_get_table_page(mali_dma_addr *phys, mali_io_address *mapping)
 {
 	_mali_osk_errcode_t ret = _MALI_OSK_ERR_NOMEM;
@@ -369,6 +375,7 @@ _mali_osk_errcode_t mali_mem_os_get_table_page(mali_dma_addr *phys, mali_io_addr
 #endif
 		if (NULL != *mapping) {
 			ret = _MALI_OSK_ERR_OK;
+			++mali_mem_page_table_page_count;
 
 #if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT)
 			/* Verify that the "physical" address is 32-bit and
@@ -406,6 +413,7 @@ void mali_mem_os_release_table_page(mali_dma_addr phys, void *virt)
 		dma_free_writecombine(&mali_platform_device->dev,
 				      _MALI_OSK_MALI_PAGE_SIZE, virt, phys);
 #endif
+		--mali_mem_page_table_page_count;
 	}
 }
 
@@ -459,6 +467,7 @@ static void mali_mem_os_page_table_pool_free(size_t nr_to_free)
 				      virt_arr[i], (dma_addr_t)phys_arr[i]);
 #endif
 	}
+	mali_mem_page_table_page_count -= nr_to_free;
 }
 
 static void mali_mem_os_trim_page_table_page_pool(void)
@@ -484,7 +493,7 @@ static void mali_mem_os_trim_page_table_page_pool(void)
 
 static unsigned long mali_mem_os_shrink_count(struct shrinker *shrinker, struct shrink_control *sc)
 {
-	return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
+	return mali_mem_os_allocator.pool_count;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)
@@ -539,16 +548,17 @@ static unsigned long mali_mem_os_shrink(struct shrinker *shrinker, struct shrink
 		mali_mem_os_free_page(page);
 	}
 
-	/* Release some pages from page table page pool */
-	mali_mem_os_trim_page_table_page_pool();
-
 	if (MALI_OS_MEMORY_KERNEL_BUFFER_SIZE_IN_PAGES > mali_mem_os_allocator.pool_count) {
 		/* Pools are empty, stop timer */
 		MALI_DEBUG_PRINT(5, ("Stopping timer, only %u pages on pool\n", mali_mem_os_allocator.pool_count));
 		cancel_delayed_work(&mali_mem_os_allocator.timed_shrinker);
 	}
 
-	return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 12, 0)
+	return mali_mem_os_shrink_count(shrinker, sc);
+#else
+	return nr;
+#endif
 }
 
 static void mali_mem_os_trim_pool(struct work_struct *data)
@@ -615,7 +625,11 @@ void mali_mem_os_term(void)
 
 	unregister_shrinker(&mali_mem_os_allocator.shrinker);
 	cancel_delayed_work_sync(&mali_mem_os_allocator.timed_shrinker);
-	destroy_workqueue(mali_mem_os_allocator.wq);
+
+	if (NULL != mali_mem_os_allocator.wq) {
+		destroy_workqueue(mali_mem_os_allocator.wq);
+		mali_mem_os_allocator.wq = NULL;
+	}
 
 	spin_lock(&mali_mem_os_allocator.pool_lock);
 	list_for_each_entry_safe(page, tmp, &mali_mem_os_allocator.pool_pages, lru) {
@@ -649,4 +663,14 @@ _mali_osk_errcode_t mali_memory_core_resource_os_memory(u32 size)
 u32 mali_mem_os_stat(void)
 {
 	return atomic_read(&mali_mem_os_allocator.allocated_pages) * _MALI_OSK_MALI_PAGE_SIZE;
+}
+
+u32 mali_mem_os_free_stat(void)
+{
+	return mali_mem_os_allocator.pool_count * _MALI_OSK_MALI_PAGE_SIZE;
+}
+
+u32 mali_mem_page_table_stat(void)
+{
+	return mali_mem_page_table_page_count * _MALI_OSK_MALI_PAGE_SIZE;
 }

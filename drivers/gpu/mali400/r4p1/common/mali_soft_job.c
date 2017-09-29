@@ -10,12 +10,12 @@
 
 #include "mali_soft_job.h"
 #include "mali_osk.h"
-#include "mali_osk_mali.h"
 #include "mali_timeline.h"
 #include "mali_session.h"
 #include "mali_kernel_common.h"
 #include "mali_uk_types.h"
 #include "mali_scheduler.h"
+#include "mali_executor.h"
 
 MALI_STATIC_INLINE void mali_soft_job_system_lock(struct mali_soft_job_system *system)
 {
@@ -76,10 +76,10 @@ void mali_soft_job_system_destroy(struct mali_soft_job_system *system)
 {
 	MALI_DEBUG_ASSERT_POINTER(system);
 
-	if (NULL != system) {
 	/* All jobs should be free at this point. */
 	MALI_DEBUG_ASSERT(_mali_osk_list_empty(&(system->jobs_used)));
 
+	if (NULL != system) {
 		if (NULL != system->lock) {
 			_mali_osk_spinlock_irq_term(system->lock);
 		}
@@ -272,7 +272,7 @@ _mali_osk_errcode_t mali_soft_job_system_signal_job(struct mali_soft_job_system 
 	MALI_DEBUG_PRINT(4, ("Mali Soft Job: signaling soft job %u (0x%08X)\n", job->id, job));
 
 	schedule_mask = mali_timeline_tracker_release(&job->tracker);
-	mali_scheduler_schedule_from_mask(schedule_mask, MALI_FALSE);
+	mali_executor_schedule_from_mask(schedule_mask, MALI_FALSE);
 
 	mali_soft_job_destroy(job);
 
@@ -326,7 +326,7 @@ void mali_soft_job_system_activate_job(struct mali_soft_job *job)
 		mali_soft_job_system_unlock(job->system);
 
 		schedule_mask = mali_timeline_tracker_release(&job->tracker);
-		mali_scheduler_schedule_from_mask(schedule_mask, MALI_FALSE);
+		mali_executor_schedule_from_mask(schedule_mask, MALI_FALSE);
 
 		mali_soft_job_destroy(job);
 	} else {

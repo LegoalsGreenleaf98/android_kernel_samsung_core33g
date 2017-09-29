@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010, 2013-2014 ARM Limited. All rights reserved.
+ * Copyright (C) 2010-2011 ARM Limited. All rights reserved.
  * 
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -8,23 +8,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-/**
- * @file mali_kernel_license.h
- * Defines for the macro MODULE_LICENSE.
- */
+#ifndef __ARCH_BASE_H__
+#define __ARCH_BASE_H__
 
-#ifndef __MALI_KERNEL_LICENSE_H__
-#define __MALI_KERNEL_LICENSE_H__
+#define ARCH_MALI_MEMORY_BASE_DEFAULT      (4 * 1024 * 1024UL)
+#define ARCH_MALI_MEMORY_SIZE_DEFAULT      (512 * 1024 * 1024UL)
 
-#ifdef __cplusplus
-extern "C" {
+#define MALI400_L2_MAX_READS_DEFAULT        0x04
+
 #endif
-
-#define MALI_KERNEL_LINUX_LICENSE     "GPL"
-#define MALI_LICENSE_IS_GPL 1
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* __MALI_KERNEL_LICENSE_H__ */
